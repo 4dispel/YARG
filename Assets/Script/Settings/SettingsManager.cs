@@ -136,6 +136,7 @@ namespace YARG.Settings
 
                 new HeaderMetadata("Gameplay"),
                 nameof(Settings.UseThreeLaneLyricsInHarmony),
+                nameof(Settings.EnableTrackEffects),
                 nameof(Settings.KickBounceMultiplier),
 
                 new HeaderMetadata("HUD"),
@@ -214,8 +215,9 @@ namespace YARG.Settings
                 new HeaderMetadata("Other"),
                 nameof(Settings.UseWhammyFx),
                 nameof(Settings.WhammyPitchShiftAmount),
-                nameof(Settings.BandComboTypeSetting)
+                nameof(Settings.BandComboTypeSetting),
 	            // nameof(Settings.WhammyOversampleFactor),
+                nameof(Settings.DataStreamEnable),
             }
         };
 

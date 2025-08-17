@@ -10,6 +10,7 @@ using YARG.Core.Engine;
 using YARG.Core.Logging;
 using YARG.Gameplay.HUD;
 using YARG.Gameplay.Visuals;
+using YARG.Playback;
 using YARG.Player;
 using YARG.Settings;
 using YARG.Themes;
@@ -35,6 +36,8 @@ namespace YARG.Gameplay.Player
         [SerializeField]
         protected CameraPositioner CameraPositioner;
         [SerializeField]
+        protected HighwayCameraRendering HighwayCameraRendering;
+        [SerializeField]
         protected TrackMaterial TrackMaterial;
         [SerializeField]
         protected ComboMeter ComboMeter;
@@ -55,7 +58,6 @@ namespace YARG.Gameplay.Player
         protected KeyedPool NotePool;
         [SerializeField]
         protected Pool BeatlinePool;
-        [FormerlySerializedAs("SoloPool")]
         [SerializeField]
         protected Pool EffectPool;
 
@@ -114,14 +116,6 @@ namespace YARG.Gameplay.Player
             TrackView.ShowPlayerName(player);
         }
 
-        protected override void UpdateVisualsWithTimes(double time)
-        {
-            base.UpdateVisualsWithTimes(time);
-            UpdateNotes(time);
-            UpdateBeatlines(time);
-            UpdateTrackEffects(time);
-        }
-
         protected override void ResetVisuals()
         {
             // "Muting a stem" isn't technically a visual,
@@ -136,12 +130,6 @@ namespace YARG.Gameplay.Player
 
             HitWindowDisplay.SetHitWindowSize();
         }
-
-        protected abstract void UpdateNotes(double time);
-
-        protected abstract void UpdateBeatlines(double time);
-
-        protected abstract void UpdateTrackEffects(double time);
     }
 
     public abstract class TrackPlayer<TEngine, TNote> : TrackPlayer
@@ -218,6 +206,7 @@ namespace YARG.Gameplay.Player
                 Engine.SetSpeed(GameManager.SongSpeed);
             }
 
+            GameManager.BeatEventHandler.Visual.Subscribe(SunburstEffects.PulseSunburst, BeatEventType.StrongBeat);
             InitializeTrackEffects();
 
             ResetNoteCounters();
@@ -225,8 +214,22 @@ namespace YARG.Gameplay.Player
             FinishInitialization();
         }
 
+        protected override void FinishDestruction()
+        {
+            GameManager.BeatEventHandler.Visual.Unsubscribe(SunburstEffects.PulseSunburst);
+
+            base.FinishDestruction();
+        }
+
         private void InitializeTrackEffects()
         {
+
+            // If the user doesn't want track effects, generate no effects
+            if (!SettingsManager.Settings.EnableTrackEffects.Value)
+            {
+                return;
+            }
+
             var phrases = new List<Phrase>();
 
             foreach (var phrase in NoteTrack.Phrases)
@@ -263,11 +266,6 @@ namespace YARG.Gameplay.Player
             {
                 _upcomingEffects.Enqueue(effect);
             }
-
-            if (EngineContainer.UnisonPhrases.Any())
-            {
-                GameManager.EngineManager.OnUnisonPhraseSuccess += OnUnisonPhraseSuccess;
-            }
         }
 
         private void SetupTheme(GameMode gameMode)
@@ -282,9 +280,7 @@ namespace YARG.Gameplay.Player
 
         protected virtual void FinishInitialization()
         {
-            GameManager.BeatEventHandler.Subscribe(StarpowerBar.PulseBar);
-
-            TrackMaterial.Initialize(ZeroFadePosition, FadeSize, Player.HighwayPreset);
+            TrackMaterial.Initialize(Player.HighwayPreset);
             CameraPositioner.Initialize(Player.CameraPreset);
         }
 
@@ -310,9 +306,15 @@ namespace YARG.Gameplay.Player
             base.ResetPracticeSection();
         }
 
-        protected void UpdateBaseVisuals(BaseStats stats, BaseEngineParameters engineParams, double songTime)
+        protected override void UpdateVisuals(double visualTime)
         {
-            int maxMultiplier = engineParams.MaxMultiplier;
+            UpdateNotes(visualTime);
+            UpdateBeatlines(visualTime);
+            UpdateTrackEffects(visualTime);
+
+            var stats = Engine.BaseStats;
+
+            int maxMultiplier = Engine.BaseParameters.MaxMultiplier;
             if (stats.IsStarPowerActive)
             {
                 maxMultiplier *= 2;
@@ -324,12 +326,13 @@ namespace YARG.Gameplay.Player
 
             _currentMultiplier = stats.ScoreMultiplier;
 
-            TrackMaterial.SetTrackScroll(songTime, NoteSpeed);
+            TrackMaterial.SetTrackScroll(visualTime, NoteSpeed);
             TrackMaterial.GrooveMode = groove;
             TrackMaterial.StarpowerMode = stats.IsStarPowerActive;
 
             ComboMeter.SetCombo(stats.ScoreMultiplier, maxMultiplier, stats.Combo);
             StarpowerBar.SetStarpower(currentStarPowerAmount, stats.IsStarPowerActive);
+            StarpowerBar.UpdateFlash(GameManager.BeatEventHandler.Visual.StrongBeat.CurrentPercentage);
             SunburstEffects.SetSunburstEffects(groove, stats.IsStarPowerActive, _currentMultiplier);
 
             TrackView.UpdateNoteStreak(stats.Combo);
@@ -369,9 +372,9 @@ namespace YARG.Gameplay.Player
             }
         }
 
-        protected override void UpdateNotes(double songTime)
+        private void UpdateNotes(double visualTime)
         {
-            while (NoteIndex < Notes.Count && Notes[NoteIndex].Time <= songTime + SpawnTimeOffset)
+            while (NoteIndex < Notes.Count && Notes[NoteIndex].Time <= visualTime + SpawnTimeOffset)
             {
                 var note = Notes[NoteIndex];
 
@@ -399,7 +402,7 @@ namespace YARG.Gameplay.Player
             }
         }
 
-        protected override void UpdateBeatlines(double time)
+        private void UpdateBeatlines(double time)
         {
             while (BeatlineIndex < Beatlines.Count && Beatlines[BeatlineIndex].Time <= time + SpawnTimeOffset)
             {
@@ -436,7 +439,7 @@ namespace YARG.Gameplay.Player
             }
         }
 
-        protected override void UpdateTrackEffects(double time)
+        private void UpdateTrackEffects(double time)
         {
             if (_upcomingEffects.TryPeek(out var nextEffect) && nextEffect.Time <= time + SpawnTimeOffset)
             {
@@ -752,13 +755,6 @@ namespace YARG.Gameplay.Player
             }
         }
 
-        protected virtual void OnUnisonPhraseSuccess()
-        {
-            // This is here because it seemed like awarding from TrackPlayer would work best for replays
-            // since all the replay data is saved here
-            YargLogger.LogFormatTrace("TrackPlayer would have awarded unison bonus at engine time {0}", Engine.CurrentTime);
-        }
-
         protected virtual void OnCountdownChange(double countdownLength, double endTime)
         {
             TrackView.UpdateCountdown(countdownLength, endTime);
@@ -769,16 +765,9 @@ namespace YARG.Gameplay.Player
             OnStarPowerPhraseHit();
         }
 
-        protected override void FinishDestruction()
+        public override void GameplayUpdate()
         {
-            base.FinishDestruction();
-
-            GameManager.BeatEventHandler.Unsubscribe(StarpowerBar.PulseBar);
-        }
-
-        public override void UpdateWithTimes(double inputTime)
-        {
-            base.UpdateWithTimes(inputTime);
+            base.GameplayUpdate();
 
             if (LastHighScore != null && !_newHighScoreShown && Score > LastHighScore)
             {
