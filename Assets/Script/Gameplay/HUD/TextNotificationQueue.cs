@@ -80,5 +80,6 @@ namespace YARG.Gameplay.HUD
         StarPowerReady,
         HotStart,
         StrongFinish,
+        Offset,
     }
 }

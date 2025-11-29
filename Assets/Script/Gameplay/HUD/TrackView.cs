@@ -25,6 +25,8 @@ namespace YARG.Gameplay.HUD
         private CountdownDisplay _countdownDisplay;
         [SerializeField]
         private PlayerNameDisplay _playerNameDisplay;
+        [SerializeField]
+        private JudgementDisplay _judgementDisplay;
 
         private TrackPlayer _trackPlayer;
 
@@ -112,6 +114,16 @@ namespace YARG.Gameplay.HUD
         public void ShowPlayerName(YargPlayer player)
         {
             _playerNameDisplay.ShowPlayer(player);
+        }
+
+        public void ShowJudgement(int offset)
+        {
+            _judgementDisplay.ShowJudgement(offset);
+        }
+
+        public void SetPerfectWindow(double perfectWindow)
+        {
+            _judgementDisplay.SetPerfectWindow(perfectWindow);
         }
 
         public void ForceReset()

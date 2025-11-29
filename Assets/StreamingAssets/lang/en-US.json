@@ -330,7 +330,8 @@
             "NewHighScore": "NEW HIGH SCORE",
             "NoteStreak": "{0:N0}-NOTE STREAK",
             "StarPowerReady": "STAR POWER READY",
-            "StrongFinish": "STRONG FINISH"
+            "StrongFinish": "STRONG FINISH",
+            "Offset": "{0:N0}ms offset"
         },
         "Solo": {
             "Performance": {

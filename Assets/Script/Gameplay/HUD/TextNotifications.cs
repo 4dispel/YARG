@@ -101,6 +101,14 @@ namespace YARG.Gameplay.HUD
             _notificationQueue.Enqueue(new TextNotification(TextNotificationType.StarPowerReady));
         }
 
+        public void ShowOffsetNotification(int offset)
+        {
+            // Don't build up notifications during a solo
+            if (!isActiveAndEnabled) return;
+
+            _notificationQueue.Enqueue(new TextNotification(TextNotificationType.Offset, offset));
+        }
+
         public void UpdateNoteStreak(int streak)
         {
             // Don't build up notifications during a solo

@@ -114,6 +114,7 @@ namespace YARG.Gameplay.Player
                 or Instrument.ProBass_22Fret;
 
             TrackView.ShowPlayerName(player);
+            TrackView.SetPerfectWindow(preset.FiveFretGuitar.PerfectWindow);
         }
 
         protected override void ResetVisuals()
@@ -681,6 +682,10 @@ namespace YARG.Gameplay.Player
                         haptics.SetMultiplier((byte) Math.Clamp(_currentMultiplier, 1, byte.MaxValue));
                     }
                 }
+
+                //YargLogger.LogFormatWarning("hit note with offset {0}ms", Math.Floor((note.HitTime - note.Time) * 1000));
+
+                TrackView.ShowJudgement((int)Math.Floor((note.HitTime - note.Time) * 1000));
 
                 if (index >= Notes.Count - 1 && note.ParentOrSelf.WasFullyHit())
                 {
