@@ -52,7 +52,6 @@ namespace YARG.Playlists
                     PlaylistContainer.SavePlaylist(this);
                 }
             }
-
         }
 
         public void RemoveSong(SongEntry song)
@@ -84,9 +83,87 @@ namespace YARG.Playlists
             return songlist;
         }
 
+        public void MoveSongUp(SongEntry song)
+        {
+            // Get the index of the song
+            var index = SongHashes.IndexOf(song.Hash);
+
+            // If the song is not at the top, swap it with the previous song
+            if (index > 0)
+            {
+                (SongHashes[index - 1], SongHashes[index]) = (SongHashes[index], SongHashes[index - 1]);
+                PlaylistContainer.SavePlaylist(this);
+            }
+        }
+
+        public void MoveSongDown(SongEntry song)
+        {
+            // Get the index of the song
+            var index = SongHashes.IndexOf(song.Hash);
+
+            // If the song is not at the bottom, swap it with the next song
+            if (index < SongHashes.Count - 1)
+            {
+                (SongHashes[index + 1], SongHashes[index]) = (SongHashes[index], SongHashes[index + 1]);
+                PlaylistContainer.SavePlaylist(this);
+            }
+        }
+
         public void Clear()
         {
             SongHashes.Clear();
+        }
+
+        public void SortByName(bool ascending = true)
+        {
+            // Get all songs, sort by name, then rebuild hash list
+            var songs = ToList();
+
+            if (ascending)
+            {
+                songs.Sort((a, b) => string.Compare(a.Name, b.Name, System.StringComparison.OrdinalIgnoreCase));
+            }
+            else
+            {
+                songs.Sort((a, b) => string.Compare(b.Name, a.Name, System.StringComparison.OrdinalIgnoreCase));
+            }
+
+            SongHashes.Clear();
+            foreach (var song in songs)
+            {
+                SongHashes.Add(song.Hash);
+            }
+
+            if (!Ephemeral)
+            {
+                PlaylistContainer.SavePlaylist(this);
+            }
+        }
+
+        public void SortByArtist(bool ascending = true)
+        {
+            // Get all songs, sort by artist, then rebuild hash list
+            var songs = ToList();
+
+            if (ascending)
+            {
+                songs.Sort((a, b) => string.Compare(a.Artist, b.Artist, System.StringComparison.OrdinalIgnoreCase));
+            }
+            else
+            {
+                songs.Sort((a, b) => string.Compare(b.Artist, a.Artist, System.StringComparison.OrdinalIgnoreCase));
+            }
+
+            SongHashes.Clear();
+            foreach (var song in songs)
+            {
+                SongHashes.Add(song.Hash);
+            }
+
+            if (!Ephemeral)
+            {
+                PlaylistContainer.SavePlaylist(this);
+            }
         }
     }
 }

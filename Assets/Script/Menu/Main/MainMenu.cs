@@ -1,12 +1,10 @@
 using TMPro;
 using UnityEngine;
 using YARG.Core.Input;
-using YARG.Helpers;
-using YARG.Localization;
 using YARG.Menu.MusicLibrary;
-using YARG.Menu.Settings;
 using YARG.Menu.Navigation;
 using YARG.Menu.Persistent;
+using YARG.Menu.Settings;
 using YARG.Settings;
 
 namespace YARG.Menu.Main
@@ -46,18 +44,18 @@ namespace YARG.Menu.Main
                 NavigationScheme.Entry.NavigateSelect,
                 NavigationScheme.Entry.NavigateUp,
                 NavigationScheme.Entry.NavigateDown,
-                new NavigationScheme.Entry(MenuAction.Select, "Menu.Main.GoToCurrentlyPlaying", CurrentlyPlaying),
+                new NavigationScheme.Entry(MenuAction.Select, "Menu.Main.GoToCurrentlyPlaying", CurrentlyPlaying)
             }, true));
         }
 
         private void OnDisable()
         {
-            Navigator.Instance.PopScheme();
+            Navigator.Instance?.PopScheme();
         }
 
         public void CurrentlyPlaying()
         {
-            MusicLibraryMenu.CurrentlyPlaying = MusicPlayer.NowPlaying;
+            MusicLibraryMenu.RequestGoToCurrentlyPlaying(MusicPlayer.NowPlaying);
             QuickPlay();
         }
 

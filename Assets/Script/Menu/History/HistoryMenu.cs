@@ -1,9 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
+using System.Linq;
 using UnityEngine;
 using YARG.Core.Input;
-using YARG.Core.Logging;
 using YARG.Core.Replays;
 using YARG.Helpers;
 using YARG.Localization;
@@ -42,8 +41,10 @@ namespace YARG.Menu.History
         [SerializeField]
         private HeaderTabs _headerTabs;
 
-        private void OnEnable()
+        protected override void OnEnable()
         {
+            base.OnEnable();
+
             // Set navigation scheme
             Navigator.Instance.PushScheme(new NavigationScheme(new()
             {
@@ -60,7 +61,7 @@ namespace YARG.Menu.History
                 new NavigationScheme.Entry(MenuAction.Green, "Menu.Common.Confirm",
                     () => CurrentSelection?.ViewClick()),
                 new NavigationScheme.Entry(MenuAction.Red, "Menu.Common.Back",
-                    Back),
+                    Back, hide: true),
                 new NavigationScheme.Entry(MenuAction.Yellow, "Menu.History.Analyze",
                     () => CurrentSelection?.Shortcut1()),
                 new NavigationScheme.Entry(MenuAction.Orange, "Menu.History.PlayWithReplay",
@@ -91,6 +92,11 @@ namespace YARG.Menu.History
             int categoryIndex = 0;
             list.Add(new CategoryViewType(LocalizeTime(_categoryTimes[0])));
 
+            List<PlayerScoreRecord> allPlayerScoreRecords = ScoreContainer.GetAllPlayerScoreRecords();
+            var gameIdToPlayerRecords = allPlayerScoreRecords
+                .GroupBy(x => x.GameRecordId)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
             foreach (var record in ScoreContainer.GetAllGameRecords())
             {
                 // See if we should create a category (make sure to skip the ones that have nothing in them)
@@ -108,7 +114,8 @@ namespace YARG.Menu.History
                     list.Add(new CategoryViewType(text));
                 }
 
-                list.Add(new ReplayViewType(record));
+                gameIdToPlayerRecords.TryGetValue(record.Id, out var playerScoreRecords);
+                list.Add(new ReplayViewType(record, playerScoreRecords));
             }
 
             return list;
@@ -171,8 +178,9 @@ namespace YARG.Menu.History
             });
         }
 
-        private void OnDisable()
+        protected override void OnDisable()
         {
+            base.OnDisable();
             Navigator.Instance.PopScheme();
 
             _headerTabs.TabChanged -= OnTabChanged;

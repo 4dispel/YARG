@@ -1,9 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
+using YARG.Assets.Script.Helpers;
 using YARG.Core;
 using YARG.Core.Chart;
-using YARG.Core.Engine.ProKeys;
+using YARG.Core.Engine.Keys;
 using YARG.Core.Game;
 using YARG.Gameplay;
 using YARG.Gameplay.Player;
@@ -26,9 +27,15 @@ namespace YARG.Settings.Preview
             public delegate EnginePreset.HitWindowPreset HitWindowProviderFunc(EnginePreset e);
             public delegate FakeNoteData CreateFakeNoteFunc(double time);
 
-            public int FretCount;
             public bool UseKickFrets;
             public bool UseProKeys;
+
+            public Dictionary<int, int> HighwayOrdering;
+            public int LaneCount;
+            #nullable enable
+            public GameObject? FretPrefab;
+            public GameObject? KickFretPrefab;
+            #nullable restore
 
             public FretColorProviderFunc FretColorProvider;
             public NoteColorProviderFunc NoteColorProvider;
@@ -44,7 +51,8 @@ namespace YARG.Settings.Preview
                 GameMode.FiveFretGuitar,
                 new Info
                 {
-                    FretCount = 5,
+                    HighwayOrdering = FiveFretGuitarPlayer.DEFAULT_HIGHWAY_ORDERING,
+                    LaneCount = 5,
 
                     FretColorProvider = (colorProfile) => colorProfile.FiveFretGuitar,
                     NoteColorProvider = (colorProfile, note) => colorProfile.FiveFretGuitar
@@ -96,8 +104,10 @@ namespace YARG.Settings.Preview
                 GameMode.FourLaneDrums,
                 new Info
                 {
-                    FretCount = 4,
                     UseKickFrets = true,
+
+                    HighwayOrdering = DrumsPlayer.DEFAULT_FOUR_LANE_HIGHWAY_ORDERING,
+                    LaneCount = 4,
 
                     FretColorProvider = (colorProfile) => colorProfile.FourLaneDrums,
                     NoteColorProvider = (colorProfile, note) =>
@@ -163,13 +173,15 @@ namespace YARG.Settings.Preview
                 GameMode.FiveLaneDrums,
                 new Info
                 {
-                    FretCount = 5,
                     UseKickFrets = true,
 
                     FretColorProvider = (colorProfile) => colorProfile.FiveLaneDrums,
                     NoteColorProvider = (colorProfile, note) => colorProfile.FiveLaneDrums
                         .GetNoteColor(note.Fret)
                         .ToUnityColor(),
+
+                    HighwayOrdering = DrumsPlayer.DEFAULT_FIVE_LANE_HIGHWAY_ORDERING,
+                    LaneCount = 5,
 
                     HitWindowProvider = (enginePreset) => enginePreset.Drums.HitWindow,
 
@@ -277,19 +289,27 @@ namespace YARG.Settings.Preview
             CurrentGameModeInfo = _gameModeInfos[SelectedGameMode];
             var theme = ThemePreset.Default;
 
+            // If we aren't using Pro Keys, then the passed instrument doesn't really matter; arbitrarily pass Five-Fret Guitar
+            var style = VisualStyleHelpers.GetVisualStyle(SelectedGameMode, CurrentGameModeInfo.UseProKeys ? Instrument.ProKeys : Instrument.FiveFretGuitar);
+
             // Create frets and put then on the right layer
             if (!CurrentGameModeInfo.UseProKeys)
             {
-                _fretArray.FretCount = CurrentGameModeInfo.FretCount;
                 _fretArray.UseKickFrets = CurrentGameModeInfo.UseKickFrets;
-                _fretArray.Initialize(theme, SelectedGameMode,
-                    CurrentGameModeInfo.FretColorProvider(ColorProfile.Default), false, false, false, false);
+                _fretArray.Initialize(
+                    CurrentGameModeInfo.HighwayOrdering,
+                    CurrentGameModeInfo.LaneCount,
+                    CurrentGameModeInfo.KickFretPrefab,
+                    CurrentGameModeInfo.FretColorProvider(ColorProfile.Default),
+                    theme,
+                    style
+                );
                 _fretArray.transform.SetLayerRecursive(LayerMask.NameToLayer("Settings Preview"));
             }
 
             // Create the note prefab (this has to be specially done, because
             // TrackElements need references to the GameManager)
-            var prefab = FakeNote.CreateFakeNoteFromTheme(theme, SelectedGameMode);
+            var prefab = FakeNote.CreateFakeNoteFromTheme(theme, style);
             prefab.transform.parent = transform;
             prefab.SetActive(false);
             _notePool.SetPrefabAndReset(prefab);
@@ -304,7 +324,7 @@ namespace YARG.Settings.Preview
 
             var highwayRenderer = _cameraPositioner.GetComponent<HighwayCameraRendering>();
             var camera = _cameraPositioner.GetComponent<Camera>();
-            highwayRenderer.AddPlayerParams(transform.position, camera, 0, 0, 0);
+            highwayRenderer.AddPlayerParams(transform.position, camera, 0, 0, 0, 0, false);
 
             // Force update it as well to make sure it's right before any settings are changed
             OnSettingChanged();
@@ -326,12 +346,6 @@ namespace YARG.Settings.Preview
             highwayRenderer.UpdateCurveFactor(cameraPreset.CurveFactor, 0);
             highwayRenderer.UpdateFadeParams(0, 3f, cameraPreset.FadeLength);
             highwayRenderer.UpdateCameraProjectionMatrices();
-
-            // Update color profiles
-            if (!CurrentGameModeInfo.UseProKeys)
-            {
-                _fretArray.InitializeColor(CurrentGameModeInfo.FretColorProvider(colorProfile), false, false);
-            }
 
             // Update hit window
             _hitWindow.HitWindow = CurrentGameModeInfo.HitWindowProvider(enginePreset).Create();

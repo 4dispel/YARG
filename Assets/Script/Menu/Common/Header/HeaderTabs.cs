@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using UnityEditor.Rendering;
 using UnityEngine;
 using YARG.Core.Input;
 using YARG.Helpers.Extensions;
@@ -79,6 +77,8 @@ namespace YARG.Menu
             // Skip if not initialized yet
             if (_navigationGroup == null) return;
 
+            var previousSelectedTabId = SelectedTabId;
+
             transform.DestroyChildren();
             _navigationGroup.ClearNavigatables();
 
@@ -92,7 +92,11 @@ namespace YARG.Menu
                 _navigationGroup.AddNavigatable(tabComponent);
             }
 
-            _navigationGroup.SelectFirst();
+            if (!string.IsNullOrEmpty(previousSelectedTabId))
+                SelectTabById(previousSelectedTabId);
+
+            if (string.IsNullOrEmpty(SelectedTabId))
+                _navigationGroup.SelectFirst();
         }
 
         public void SelectFirstTab()

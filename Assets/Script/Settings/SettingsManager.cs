@@ -34,69 +34,80 @@ namespace YARG.Settings
                 new ButtonRowMetadata(nameof(Settings.OpenCalibrator)),
                 nameof(Settings.AudioCalibration),
                 nameof(Settings.VideoCalibration),
-                nameof(Settings.AccountForHardwareLatency),
+                new FieldMetadata(nameof(Settings.AccountForHardwareLatency), true, isAdvanced: true),
 
                 new HeaderMetadata("Venues"),
                 new ButtonRowMetadata(nameof(Settings.OpenVenueFolder)),
-                nameof(Settings.DisableGlobalBackgrounds),
+                new FieldMetadata(nameof(Settings.DisableDefaultBackground), isAdvanced: true),
+                new FieldMetadata(nameof(Settings.DisableGlobalBackgrounds), isAdvanced: true),
                 nameof(Settings.DisablePerSongBackgrounds),
-                nameof(Settings.WaitForSongVideo),
+                new FieldMetadata(nameof(Settings.WaitForSongVideo), isAdvanced: true),
 
                 new HeaderMetadata("Gameplay"),
-                nameof(Settings.InputPollingFrequency),
+                new FieldMetadata(nameof(Settings.InputPollingFrequency), isAdvanced: true),
                 nameof(Settings.VoiceActivatedVocalStarPower),
-                nameof(Settings.EnablePracticeSP),
-                nameof(Settings.PracticeRestartDelay),
+                new FieldMetadata(nameof(Settings.EnablePracticeSP), isAdvanced: true),
+                new FieldMetadata(nameof(Settings.PracticeRestartDelay), isAdvanced: true),
+                nameof(Settings.NoFailMode),
+                nameof(Settings.LearningGuides),
+                new FieldMetadata(nameof(Settings.ReduceNoteSpeedByDifficulty)),
 
                 new HeaderMetadata("StatusBar"),
                 nameof(Settings.ShowBattery),
                 nameof(Settings.ShowTime),
-                nameof(Settings.MemoryStats),
-                nameof(Settings.FpsStats),
-                nameof(Settings.ShowActivePlayers),
-                nameof(Settings.ShowActiveBots),
+                new FieldMetadata(nameof(Settings.MemoryStats), isAdvanced: true),
+                new FieldMetadata(nameof(Settings.FpsStats), isAdvanced: true),
+                new FieldMetadata(nameof(Settings.ShowActivePlayers)),
+                new FieldMetadata(nameof(Settings.ShowActiveBots), isAdvanced: true),
 
                 new HeaderMetadata("Other"),
                 nameof(Settings.ReconnectProfiles),
-                nameof(Settings.ReduceNoteSpeedByDifficulty),
-                nameof(Settings.ShowCursorTimer),
+                nameof(Settings.AutoCreateProfiles),
+                new FieldMetadata(nameof(Settings.ShowCursorTimer), isAdvanced: true),
                 nameof(Settings.PauseOnDeviceDisconnect),
                 nameof(Settings.PauseOnFocusLoss),
                 nameof(Settings.WrapAroundNavigation),
-                nameof(Settings.AmIAwesome),
+                nameof(Settings.DiscordRichPresence),
+                new FieldMetadata(nameof(Settings.AmIAwesome), isAdvanced: true),
             },
             new SongManagerTab("SongManager", icon: "Songs")
             {
                 new HeaderMetadata("ScanningOptions"),
                 nameof(Settings.AllowDuplicateSongs),
                 nameof(Settings.UseFullDirectoryForPlaylists),
+                nameof(Settings.Genrelizer),
                 new HeaderMetadata("MusicLibrary"),
                 nameof(Settings.ShowFavoriteButton),
                 nameof(Settings.DifficultyRings),
                 nameof(Settings.HighScoreInfo),
+                new FieldMetadata(nameof(Settings.ShowPercentDecimals), isAdvanced: true),
                 nameof(Settings.HighScoreHistory),
+                new HeaderMetadata("PlayAShow"),
+                nameof(Settings.PlayAShowTimeout),
+                nameof(Settings.RequireAllDifficulties),
             },
             new MetadataTab("Sound", icon: "Sound")
             {
                 new HeaderMetadata("Volume"),
                 nameof(Settings.MasterMusicVolume),
                 nameof(Settings.GuitarVolume),
-                nameof(Settings.RhythmVolume),
+                new FieldMetadata(nameof(Settings.RhythmVolume), isAdvanced: true),
                 nameof(Settings.BassVolume),
-                nameof(Settings.KeysVolume),
+                new FieldMetadata(nameof(Settings.KeysVolume), isAdvanced: true),
                 nameof(Settings.DrumsVolume),
                 nameof(Settings.VocalsVolume),
-                nameof(Settings.SongVolume),
-                nameof(Settings.CrowdVolume),
+                new FieldMetadata(nameof(Settings.SongVolume), isAdvanced: true),
+                new FieldMetadata(nameof(Settings.CrowdVolume), isAdvanced: true),
                 nameof(Settings.SfxVolume),
-                nameof(Settings.DrumSfxVolume),
-                nameof(Settings.PreviewVolume),
+                new FieldMetadata(nameof(Settings.DrumSfxVolume), isAdvanced: true),
+                new FieldMetadata(nameof(Settings.PreviewVolume), isAdvanced: true),
                 nameof(Settings.MusicPlayerVolume),
-                nameof(Settings.VocalMonitoring),
+                new FieldMetadata(nameof(Settings.VocalMonitoring)),
+                new FieldMetadata(nameof(Settings.MetronomeVolume), isAdvanced: true),
 
-                new HeaderMetadata("Customization"),
-                nameof(Settings.EnablePlaybackBuffer),
-                nameof(Settings.PlaybackBufferLength),
+                new HeaderMetadata("Customization", isAdvanced: true),
+                new FieldMetadata(nameof(Settings.EnablePlaybackBuffer), isAdvanced: true),
+                new FieldMetadata(nameof(Settings.PlaybackBufferLength), isAdvanced: true),
 
                 new HeaderMetadata("Input"),
                 nameof(Settings.MicrophoneSensitivity),
@@ -104,45 +115,51 @@ namespace YARG.Settings
                 new HeaderMetadata("Gameplay"),
                 nameof(Settings.MuteOnMiss),
                 nameof(Settings.UseStarpowerFx),
-                nameof(Settings.ClapsInStarpower),
+                nameof(Settings.UseCrowdFx),
                 nameof(Settings.OverstrumAndOverhitSoundEffects),
-                nameof(Settings.AlwaysOnDrumSFX),
-                // nameof(Settings.UseWhammyFx),
-                // nameof(Settings.WhammyPitchShiftAmount),
-                // nameof(Settings.WhammyOversampleFactor),
-                // nameof(Settings.ReverbInStarpower),
+                new FieldMetadata(nameof(Settings.AlwaysOnDrumSFX), isAdvanced: true),
+                new FieldMetadata(nameof(Settings.UseWhammyFx), isAdvanced: true),
+                new FieldMetadata(nameof(Settings.WhammyPitchShiftAmount), isAdvanced: true),
 
                 new HeaderMetadata("Other"),
-                nameof(Settings.UseChipmunkSpeed),
-                nameof(Settings.ApplyVolumesInMusicLibrary),
+                new FieldMetadata(nameof(Settings.UseChipmunkSpeed), isAdvanced: true),
+                new FieldMetadata(nameof(Settings.ApplyVolumesInMusicLibrary), isAdvanced: true),
+                nameof(Settings.EnableVoxSamples),
+                new FieldMetadata(nameof(Settings.MetronomeSound), isAdvanced: true),
             },
             new MetadataTab("Graphics", icon: "Display", new TrackPreviewBuilder())
             {
                 new HeaderMetadata("Display"),
                 nameof(Settings.VSync),
-                nameof(Settings.FpsCap),
+                new FieldMetadata(nameof(Settings.FpsCap)),
+                new FieldMetadata(nameof(Settings.VenueFpsCap), isAdvanced: true),
                 nameof(Settings.FullscreenMode),
                 nameof(Settings.Resolution),
-                nameof(Settings.FpsStats),
+                new FieldMetadata(nameof(Settings.FpsStats), isAdvanced: true),
 
                 new HeaderMetadata("Graphics"),
                 nameof(Settings.LowQuality),
-                nameof(Settings.DisableBloom),
-                nameof(Settings.DisableFilmGrain),
+                new FieldMetadata(nameof(Settings.DisableBloom), isAdvanced: true),
+                new FieldMetadata(nameof(Settings.DisableFilmGrain), isAdvanced: true),
                 nameof(Settings.StarPowerHighwayFx),
                 nameof(Settings.SongBackgroundOpacity),
-                nameof(Settings.VenueRenderingQuality),
-                nameof(Settings.VenueAntiAliasing),
+                new FieldMetadata(nameof(Settings.VenueRenderingQuality), isAdvanced: true),
+                new FieldMetadata(nameof(Settings.VenueAntiAliasing), isAdvanced: true),
+                new FieldMetadata(nameof(Settings.VenuePostProcessing), isAdvanced: true),
 
                 new HeaderMetadata("Gameplay"),
-                nameof(Settings.UseThreeLaneLyricsInHarmony),
+                nameof(Settings.StaticVocalsMode),
+                new FieldMetadata(nameof(Settings.UseThreeLaneLyricsInHarmony), isAdvanced: true),
                 nameof(Settings.EnableTrackEffects),
-                nameof(Settings.KickBounceMultiplier),
+                nameof(Settings.EnableHighwayAnimation),
+                new FieldMetadata(nameof(Settings.KickBounceMultiplier), isAdvanced: true),
+                new FieldMetadata(nameof(Settings.HighwayTiltMultiplier), isAdvanced: true),
 
                 new HeaderMetadata("HUD"),
-                nameof(Settings.ShowHitWindow),
+                new FieldMetadata(nameof(Settings.ShowHitWindow), isAdvanced: true),
                 nameof(Settings.DisableTextNotifications),
                 nameof(Settings.NoteStreakFrequency),
+                new FieldMetadata(nameof(Settings.VocalStreakFrequency), isAdvanced: true),
                 nameof(Settings.CountdownDisplay),
                 nameof(Settings.ShowPlayerNameWhenStartingSong),
                 nameof(Settings.LyricDisplay),
@@ -160,10 +177,12 @@ namespace YARG.Settings
 
             new MetadataTab("FileManagement", icon: "Files")
             {
-                new HeaderMetadata("Export"),
+                new HeaderMetadata("ExportSongs"),
                 new ButtonRowMetadata(
-                    nameof(Settings.ExportSongsOuvert),
-                    nameof(Settings.ExportSongsText)),
+                    nameof(Settings.ExportSongsJson),
+                    nameof(Settings.ExportSongsText),
+                    nameof(Settings.ExportSongsCsv)
+                ),
                 new HeaderMetadata("PathsAndFolders"),
                 new ButtonRowMetadata(
                     nameof(Settings.CopyCurrentSongTextFilePath),
@@ -198,6 +217,9 @@ namespace YARG.Settings
                 new HeaderMetadata("AdvancedDMXSettings"),
                 nameof(Settings.DMXUniverseChannel),
                 nameof(Settings.DMXDimmerValues),
+                nameof(Settings.DMXTargetFPS),
+                nameof(Settings.DMXPulseDuration),
+
                 //NYI
                 //nameof(Settings.DMXPerformerChannel)
                 new HeaderMetadata("RB3E"),
@@ -210,14 +232,24 @@ namespace YARG.Settings
                 nameof(Settings.ShowAdvancedMusicLibraryOptions),
                 nameof(Settings.MinimumLogLevel),
             },
-            new MetadataTab("Experimental", icon: "Beaker", new ExperimentalPreviewBuilder())
+            // new MetadataTab("Experimental", icon: "Beaker", new ExperimentalPreviewBuilder())
+            new MetadataTab("Experimental", icon: "Beaker", new CharacterPreviewBuilder())
             {
                 new HeaderMetadata("Other"),
-                nameof(Settings.UseWhammyFx),
-                nameof(Settings.WhammyPitchShiftAmount),
                 nameof(Settings.BandComboTypeSetting),
-	            // nameof(Settings.WhammyOversampleFactor),
+                nameof(Settings.CustomVocalsCharacter),
                 nameof(Settings.DataStreamEnable),
+                nameof(Settings.EnableNormalization),
+                nameof(Settings.SaveScoresWithBots),
+                new HeaderMetadata("Accessibility"),
+                nameof(Settings.FontScaling),
+                new HeaderMetadata("OutputConfiguration"),
+                nameof(Settings.OutputDevice),
+                nameof(Settings.OutputChannelDefault),
+                nameof(Settings.OutputChannelDrumSfx),
+                nameof(Settings.OutputChannelMetronome),
+                nameof(Settings.OutputChannelSfx),
+                nameof(Settings.OutputChannelVox),
             }
         };
 
@@ -243,12 +275,6 @@ namespace YARG.Settings
 
             // If null, recreate
             Settings ??= new SettingContainer();
-            if (!SettingContainer.IsInitialized && SystemInfo.supportsComputeShaders && SystemInfo.supportsMotionVectors)
-            {
-                Settings.VenueAntiAliasing.Add(
-                     YARG.VenueAntiAliasingMethod.FSR3
-                );
-            }
             SettingContainer.IsInitialized = true;
 
             // Now that we're done loading, call all of the callbacks
@@ -293,31 +319,33 @@ namespace YARG.Settings
         {
             var field = typeof(SettingContainer).GetProperty(name);
 
-            if (field == null)
+            if (field != null)
             {
-                throw new Exception($"The field `{name}` does not exist.");
+                var value = field.GetValue(Settings);
+
+                if (value == null)
+                {
+                    YargLogger.LogFormatWarning("`{0}` has a value of null. This might create errors.", name);
+                }
+
+                return (ISettingType) value;
             }
 
-            var value = field.GetValue(Settings);
-
-            if (value == null)
-            {
-                YargLogger.LogFormatWarning("`{0}` has a value of null. This might create errors.", name);
-            }
-
-            return (ISettingType) value;
+            throw new Exception($"The field `{name}` does not exist.");
         }
 
         public static void InvokeButton(string name)
         {
             var method = typeof(SettingContainer).GetMethod(name);
 
-            if (method == null)
+            if (method != null)
+            {
+                method.Invoke(Settings, null);
+            }
+            else
             {
                 throw new Exception($"The method `{name}` does not exist.");
             }
-
-            method.Invoke(Settings, null);
         }
 
         public static Tab GetTabByName(string name)

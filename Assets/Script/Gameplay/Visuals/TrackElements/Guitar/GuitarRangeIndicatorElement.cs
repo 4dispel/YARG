@@ -1,11 +1,12 @@
 ﻿using System;
 using UnityEngine;
+using YARG.Core.Engine;
 using YARG.Gameplay.Player;
 using YARG.Helpers;
 
 namespace YARG.Gameplay.Visuals
 {
-    public class GuitarRangeIndicatorElement : TrackElement<FiveFretPlayer>
+    public class GuitarRangeIndicatorElement : TrackElement<FiveFretGuitarPlayer>
     {
         public        FiveFretRangeShift RangeShift;
 
@@ -29,6 +30,11 @@ namespace YARG.Gameplay.Visuals
             var cachedTransform = _meshRenderer.transform;
             var newXScale = (RangeShift.Size / SCALE_DENOMINATOR) * 2;
             var xPos = -1 + (RangeShift.Size * (FRET_SIZE / 2)) + (RangeShift.Position - 1) * FRET_SIZE;
+
+            if (Player.Player.Profile.LeftyFlip)
+            {
+                xPos *= -1;
+            }
 
             cachedTransform.localScale = new Vector3(newXScale, RANGE_Y_SCALE, transform.localScale.z);
             cachedTransform.localPosition = new Vector3(xPos, 0.002f, cachedTransform.localPosition.z);

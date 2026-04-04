@@ -4,9 +4,11 @@ using Cysharp.Threading.Tasks;
 using TMPro;
 using UnityEngine;
 using YARG.Core.Logging;
+using YARG.Helpers;
 using YARG.Integration;
 using YARG.Localization;
 using YARG.Menu.Navigation;
+using YARG.Menu.Persistent;
 using YARG.Player;
 using YARG.Settings;
 using YARG.Song;
@@ -20,9 +22,19 @@ namespace YARG
 
         public static bool IsActive => Instance.gameObject.activeSelf;
 
+        private void PreInitLipsync()
+        {
+            var _unused = YARG.Core.Chart.LipsyncGenerator.GenerateFromLyrics(new Core.Chart.LyricsTrack());
+            YargLogger.LogInfo("Initialized phoneme dictionary");
+        }
+
         private async void Start()
         {
             using var context = new LoadingContext();
+
+            // Initialize phoneme dictionary
+            var _ = UniTask.RunOnThreadPool(PreInitLipsync);
+
 
             // Load language
             try
@@ -32,6 +44,15 @@ namespace YARG
             catch (Exception e)
             {
                 YargLogger.LogException(e);
+            }
+
+            // Check for bad paths
+            if (PathHelper.PathError)
+            {
+                // We may well not be able to localize, so don't even try
+                DialogManager.Instance.ShowMessage("Error creating persistent data directory", $"YARG was unable to create persistent data directory: \n\n{CommandLineArgs.PersistentDataPath}\n\nThis is an unrecoverable error, so YARG will exit.");
+                await DialogManager.Instance.WaitUntilCurrentClosed();
+                Quit();
             }
 
             // Load Discord right after (this requires localization)
@@ -54,6 +75,16 @@ namespace YARG
                 YargLogger.LogException(ex);
             }
 
+            // Load (sub)genre mappings
+            try
+            {
+                await Genrelizer.LoadGenreMappings(context);
+            }
+            catch (Exception ex)
+            {
+                YargLogger.LogException(ex);
+            }
+
             // Auto connect profiles, using the same order that they were previously connected.
             if (SettingsManager.Settings.ReconnectProfiles.Value)
             {
@@ -66,6 +97,15 @@ namespace YARG
 
             // Fast scan (cache read) on startup
             await SongContainer.RunRefresh(true, context);
+        }
+
+        private void Quit()
+        {
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;
+#else
+			Application.Quit();
+#endif
         }
     }
 

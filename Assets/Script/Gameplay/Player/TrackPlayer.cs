@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
-using UnityEngine.Serialization;
+using YARG.Assets.Script.Helpers;
 using YARG.Core;
 using YARG.Core.Audio;
 using YARG.Core.Chart;
@@ -10,6 +10,7 @@ using YARG.Core.Engine;
 using YARG.Core.Logging;
 using YARG.Gameplay.HUD;
 using YARG.Gameplay.Visuals;
+using YARG.Helpers;
 using YARG.Playback;
 using YARG.Player;
 using YARG.Settings;
@@ -23,7 +24,9 @@ namespace YARG.Gameplay.Player
         public const float DEFAULT_ZERO_FADE_POS = 3f;
         public const float NOTE_SPAWN_OFFSET     = 5f;
 
-        public const float TRACK_WIDTH = 2f;
+        public const float TRACK_WIDTH  = 2f;
+
+        public static int HighwayCount = 1;
 
         public double SpawnTimeOffset => (ZeroFadePosition + _spawnAheadDelay + -STRIKE_LINE_POS) / NoteSpeed;
 
@@ -57,6 +60,8 @@ namespace YARG.Gameplay.Player
         [SerializeField]
         protected KeyedPool NotePool;
         [SerializeField]
+        protected Pool LanePool;
+        [SerializeField]
         protected Pool BeatlinePool;
         [SerializeField]
         protected Pool EffectPool;
@@ -64,7 +69,9 @@ namespace YARG.Gameplay.Player
         public float ZeroFadePosition { get; private set; }
         public float FadeSize         { get; private set; }
 
-        public Vector2 HUDViewportPosition => TrackCamera.WorldToViewportPoint(_hudLocation.position);
+        [field: Header("Star Power Trim Effect")]
+        [SerializeField]
+        protected StarPowerEffectElement StarPowerEffect;
 
         protected List<Beatline> Beatlines;
 
@@ -72,7 +79,13 @@ namespace YARG.Gameplay.Player
 
         protected bool IsBass { get; private set; }
 
+        public int LaneCount { get; protected set; }
+
         private float _spawnAheadDelay;
+
+        protected float SongLength;
+
+        protected LaneElement[] BRELanes;
 
         public virtual void Initialize(int index, YargPlayer player, SongChart chart, TrackView trackView,
             StemMixer mixer, int? lastHighScore)
@@ -106,6 +119,10 @@ namespace YARG.Gameplay.Player
             var change = ZeroFadePosition - DEFAULT_ZERO_FADE_POS;
             _hudLocation.position = _hudLocation.position.AddZ(change);
 
+            // Must be done after the HUD location is set
+            StarPowerEffect.Initialize();
+            StarPowerEffect.gameObject.SetActive(false);
+
             // Determine if a track is bass or not for the BASS GROOVE text notification
             IsBass = Player.Profile.CurrentInstrument
                 is Instrument.FiveFretBass
@@ -124,8 +141,10 @@ namespace YARG.Gameplay.Player
 
             ComboMeter.SetFullCombo(IsFc);
             TrackView.ForceReset();
+            GameManager.ResetCoda();
 
             NotePool.ReturnAllObjects();
+            LanePool.ReturnAllObjects();
             BeatlinePool.ReturnAllObjects();
 
             HitWindowDisplay.SetHitWindowSize();
@@ -140,7 +159,7 @@ namespace YARG.Gameplay.Player
 
         public override BaseEngine BaseEngine => Engine;
 
-        protected List<TNote> Notes { get; private set; }
+        protected List<TNote> Notes { get; set; }
 
         protected int NoteIndex { get; private set; }
 
@@ -157,11 +176,21 @@ namespace YARG.Gameplay.Player
 
         private double _previousStarPowerAmount;
 
+        private bool _wasStarPowerActive;
+        private bool _didLowerTrack;
+
         private Queue<TrackEffect> _upcomingEffects = new();
         private List<TrackEffectElement> _currentEffects = new();
-        private List<TrackEffect> _trackEffects = new();
+        protected List<TrackEffect> _trackEffects = new();
+
+        private List<Phrase> _brePhrases = new();
+        private int _breIndex;
 
         protected SongChart Chart;
+
+        private AutoCalibrator _autoCalibrator;
+
+        protected CodaSection CurrentCoda;
 
         public override void Initialize(int index, YargPlayer player, SongChart chart, TrackView trackView,
             StemMixer mixer, int? currentHighScore)
@@ -171,14 +200,28 @@ namespace YARG.Gameplay.Player
                 return;
             }
 
+            // Get player count
+            if (index == 0)
+            {
+                // Reset
+                HighwayCount = 1;
+            }
+            else if (index + 1 > HighwayCount)
+            {
+                HighwayCount = index + 1;
+            }
+
+            // Consolidate tracks into a parent object for animation purposes
+            transform.SetParent(GameObject.Find("Visuals").transform);
+
             base.Initialize(index, player, chart, trackView, mixer, currentHighScore);
 
-            SetupTheme(player.Profile.GameMode);
+            SetupTheme();
 
             Chart = chart;
 
             OriginalNoteTrack = GetNotes(chart);
-            player.Profile.ApplyModifiers(OriginalNoteTrack);
+            player.Profile.ApplyModifiers(OriginalNoteTrack, chart.SyncTrack);
 
             NoteTrack = OriginalNoteTrack;
             Notes = NoteTrack.Notes;
@@ -206,19 +249,41 @@ namespace YARG.Gameplay.Player
                 Engine.SetSpeed(GameManager.SongSpeed);
             }
 
+            GameManager.BeatEventHandler.Audio.Subscribe(MetronomeTick, BeatEventType.Measure);
+            GameManager.BeatEventHandler.Audio.Subscribe(MetronomeTock, BeatEventType.QuarterNote);
             GameManager.BeatEventHandler.Visual.Subscribe(SunburstEffects.PulseSunburst, BeatEventType.StrongBeat);
             InitializeTrackEffects();
+            InitializeCodaEvents();
 
             ResetNoteCounters();
 
             FinishInitialization();
+
+            SongLength = (float) chart.GetEndTime();
+
+            _autoCalibrator = new AutoCalibrator(GameManager);
         }
 
         protected override void FinishDestruction()
         {
+            GameManager.BeatEventHandler.Audio.Unsubscribe(MetronomeTick);
+            GameManager.BeatEventHandler.Audio.Unsubscribe(MetronomeTock);
             GameManager.BeatEventHandler.Visual.Unsubscribe(SunburstEffects.PulseSunburst);
 
+            _autoCalibrator?.Dispose();
+
             base.FinishDestruction();
+        }
+
+        private void InitializeCodaEvents()
+        {
+            foreach (var phrase in NoteTrack.Phrases)
+            {
+                if (phrase.Type == PhraseType.BigRockEnding)
+                {
+                    _brePhrases.Add(phrase);
+                }
+            }
         }
 
         private void InitializeTrackEffects()
@@ -262,16 +327,24 @@ namespace YARG.Gameplay.Player
 
             var effects = TrackEffect.PhrasesToEffects(phrases);
             _trackEffects.AddRange(effects);
+        }
+
+        private void FinalizeTrackEffects()
+        {
             foreach (var effect in TrackEffect.SliceEffects(NoteSpeed, _trackEffects))
             {
                 _upcomingEffects.Enqueue(effect);
             }
         }
 
-        private void SetupTheme(GameMode gameMode)
+        private void SetupTheme()
         {
+            var (gameMode, instrument) = (Player.Profile.GameMode, Player.Profile.CurrentInstrument);
+
+            var style = VisualStyleHelpers.GetVisualStyle(gameMode, instrument);
+
             var themePrefab = ThemeManager.Instance.CreateNotePrefabFromTheme(
-                Player.ThemePreset, gameMode, NotePool.Prefab);
+                Player.ThemePreset, style, NotePool.Prefab);
             NotePool.SetPrefabAndReset(themePrefab);
         }
 
@@ -282,12 +355,13 @@ namespace YARG.Gameplay.Player
         {
             TrackMaterial.Initialize(Player.HighwayPreset);
             CameraPositioner.Initialize(Player.CameraPreset);
+            FinalizeTrackEffects();
         }
 
         protected void ResetNoteCounters()
         {
             NoteIndex = 0;
-            TotalNotes = Notes.Sum(i => Engine.GetNumberOfNotes(i));
+            TotalNotes = Notes.Where(n => !n.IsBigRockEnding).Sum(i => Engine.GetNumberOfNotes(i));
         }
 
         public override void ResetPracticeSection()
@@ -303,14 +377,31 @@ namespace YARG.Gameplay.Player
             BeatlineIndex = 0;
             ResetNoteCounters();
 
+            CurrentCoda = null;
+            _breIndex = 0;
+
             base.ResetPracticeSection();
+        }
+
+        public override void Rewind(double visualTime)
+        {
+
+        }
+
+        public override void PostRewind(double visualTime)
+        {
+
         }
 
         protected override void UpdateVisuals(double visualTime)
         {
+            // Allow the HUD to track the highway with animations
+            TrackView.UpdateHUDPosition(HighwayIndex, HighwayCount);
+
             UpdateNotes(visualTime);
             UpdateBeatlines(visualTime);
             UpdateTrackEffects(visualTime);
+            UpdateCodaEvents(visualTime);
 
             var stats = Engine.BaseStats;
 
@@ -330,8 +421,14 @@ namespace YARG.Gameplay.Player
             TrackMaterial.GrooveMode = groove;
             TrackMaterial.StarpowerMode = stats.IsStarPowerActive;
 
-            ComboMeter.SetCombo(stats.ScoreMultiplier, maxMultiplier, stats.Combo);
-            StarpowerBar.SetStarpower(currentStarPowerAmount, stats.IsStarPowerActive);
+            // In multiplayer, don't double the score multiplier in the strikeline element
+            // Otherwise, it looks like the band multiplier applies on top of the score multiplier
+            int displayMultiplier = GameManager.TotalPlayers > 1 && stats.IsStarPowerActive
+                ? stats.ScoreMultiplier / 2
+                : stats.ScoreMultiplier;
+
+            ComboMeter.SetCombo(stats.ScoreMultiplier, displayMultiplier, maxMultiplier, stats.Combo, Engine.CodaHasStarted);
+            StarpowerBar.SetStarpower(currentStarPowerAmount, stats.IsStarPowerActive, Engine.CodaHasStarted);
             StarpowerBar.UpdateFlash(GameManager.BeatEventHandler.Visual.StrongBeat.CurrentPercentage);
             SunburstEffects.SetSunburstEffects(groove, stats.IsStarPowerActive, _currentMultiplier);
 
@@ -364,11 +461,25 @@ namespace YARG.Gameplay.Player
                 TrackView.ShowStarPowerReady();
             }
 
+            if (stats.IsStarPowerActive && !_wasStarPowerActive && !_didLowerTrack)
+            {
+                CameraPositioner.Scoop();
+            }
+
             _previousStarPowerAmount = currentStarPowerAmount;
+            _wasStarPowerActive = stats.IsStarPowerActive;
 
             foreach (var haptics in SantrollerHaptics)
             {
                 haptics.SetStarPowerFill((float) currentStarPowerAmount);
+            }
+
+            bool isSongEnd = visualTime > SongLength;
+            bool shouldLowerTrack = isSongEnd || GameManager.PlayerHasFailed;
+            if (!_didLowerTrack && shouldLowerTrack)
+            {
+                _didLowerTrack = true;
+                CameraPositioner.Lower(isSongEnd);
             }
         }
 
@@ -378,13 +489,19 @@ namespace YARG.Gameplay.Player
             {
                 var note = Notes[NoteIndex];
 
-                // Skip this frame if the pool is full
+                // Skip this frame if the pool is full or note is part of a BRE
                 if (!NotePool.CanSpawnAmount(note.ChildNotes.Count + 1))
                 {
                     break;
                 }
 
                 NoteIndex++;
+
+                // Don't spawn the note if it is under a BRE
+                if (note.IsBigRockEnding)
+                {
+                    continue;
+                }
 
                 OnNoteSpawned(note);
 
@@ -436,6 +553,18 @@ namespace YARG.Gameplay.Player
                 poolable.EnableFromPool();
 
                 BeatlineIndex++;
+            }
+        }
+
+        private void UpdateCodaEvents(double time)
+        {
+            while (_breIndex < _brePhrases.Count && _brePhrases[_breIndex].Time <= time + SpawnTimeOffset)
+            {
+
+                var phrase = _brePhrases[_breIndex];
+                _breIndex++;
+
+                StartBRE(phrase.Time, phrase.TimeEnd);
             }
         }
 
@@ -581,8 +710,168 @@ namespace YARG.Gameplay.Player
             poolable.EnableFromPool();
         }
 
+        // ReSharper disable once InconsistentNaming
+        protected virtual void StartBRE(double timeStart, double timeEnd)
+        {
+            RescaleLanesForBRE();
+
+            if (!LanePool.CanSpawnAmount(BRELanes.Length))
+            {
+                return;
+            }
+
+            for (int i = 0; i < BRELanes.Length; i++)
+            {
+                var newLane = (LaneElement) LanePool.TakeWithoutEnabling();
+
+                if (newLane == null)
+                {
+                    YargLogger.LogWarning("Attempted to spawn BRE lane, but it's at its cap!");
+                    return;
+                }
+
+                newLane.SetTimeRange(timeStart, timeEnd);
+                InitializeSpawnedLane(newLane, i);
+                newLane.EnableFromPool();
+
+                newLane.SetEmissionColor(0);
+
+                BRELanes[i] = newLane;
+            }
+        }
+
         protected virtual void OnNoteSpawned(TNote parentNote)
         {
+            SpawnLanesFromNote(parentNote);
+        }
+
+        private void SpawnLanesFromNote(TNote parentNote)
+        {
+            if (!Engine.LanesExist || !Engine.BaseParameters.EnableLanes)
+            {
+                return;
+            }
+
+            if (!LanePool.CanSpawnAmount(1))
+            {
+                return;
+            }
+
+            bool containsLaneStart = false;
+            foreach (var childNote in parentNote.AllNotes)
+            {
+                if (childNote.IsLaneStart)
+                {
+                    containsLaneStart = true;
+                    break;
+                }
+            }
+
+            if (containsLaneStart)
+            {
+                var laneStartNotes = new Dictionary<int, TNote>();
+                var laneEndTimes = new Dictionary<int, double>();
+
+                // Iterate forward to find the length of all lanes in this phrase
+                var noteRef = parentNote;
+                var thisLaneFlag = parentNote.IsTrill ? NoteFlags.Trill : NoteFlags.Tremolo;
+
+                while (noteRef != null)
+                {
+                    // Create one lane for single notes, create multiple lanes for non-drum chords
+                    bool containsLaneEnd = false;
+                    foreach (var childNote in noteRef.AllNotes)
+                    {
+                        if (childNote.IsLaneEnd)
+                        {
+                            containsLaneEnd = true;
+                        }
+
+                        if (childNote.IsLane)
+                        {
+                            if (laneStartNotes.ContainsKey(childNote.LaneNote))
+                            {
+                                laneEndTimes[childNote.LaneNote] = noteRef.Time;
+                            }
+                            else
+                            {
+                                laneStartNotes[childNote.LaneNote] = childNote;
+                            }
+                        }
+                    }
+
+                    if (containsLaneEnd)
+                    {
+                        break;
+                    }
+
+                    noteRef = noteRef.NextNote;
+                }
+
+                foreach (var (laneIndex, note) in laneStartNotes)
+                {
+                    if (!laneEndTimes.ContainsKey(laneIndex))
+                    {
+                        // Ending note was not found, do not create lane
+                        continue;
+                    }
+
+                    var firstLaneNote = laneStartNotes[laneIndex];
+                    double startTime = firstLaneNote.Time;
+                    double endTime = laneEndTimes[laneIndex];
+
+                    // Extend a previous lane if possible instead of creating two adjoining lanes at the same index
+                    bool extendExisting = false;
+                    foreach (LaneElement existingLane in LanePool.AllSpawned)
+                    {
+                        if (existingLane.ContainsIndex(laneIndex))
+                        {
+                            if (startTime - existingLane.EndTime <= LaneElement.COMBINE_LANE_THRESHOLD)
+                            {
+                                // New lane will overlap with existing one
+                                // Determine if the previous notes in this chart should prevent combining
+                                int notesToSearch = firstLaneNote.IsTrill ? 2 : 1;
+                                noteRef = firstLaneNote.PreviousNote;
+                                for (int n = 0; n < notesToSearch; n++)
+                                {
+                                    if (noteRef == null)
+                                    {
+                                        break;
+                                    }
+
+                                    if (existingLane.ContainsIndex(noteRef.LaneNote) && (noteRef.Flags & thisLaneFlag) != 0)
+                                    {
+                                        extendExisting = true;
+                                        break;
+                                    }
+
+                                    noteRef = noteRef.PreviousNote;
+                                }
+                            }
+
+                            if (extendExisting)
+                            {
+                                existingLane.SetTimeRange(existingLane.ElementTime, Math.Max(endTime, existingLane.EndTime));
+                            }
+
+                            break;
+                        }
+                    }
+
+                    if (extendExisting)
+                    {
+                        continue;
+                    }
+
+                    // Create a new lane element at this index
+                    var newLane = (LaneElement) LanePool.TakeWithoutEnabling();
+                    newLane.SetTimeRange(startTime, endTime);
+                    InitializeSpawnedLane(newLane, note);
+                    ModifyLaneFromNote(newLane, firstLaneNote);
+
+                    newLane.EnableFromPool();
+                }
+            }
         }
 
         public override void SetPracticeSection(uint start, uint end)
@@ -666,9 +955,19 @@ namespace YARG.Gameplay.Player
         }
 
         protected abstract void InitializeSpawnedNote(IPoolable poolable, TNote note);
+        protected abstract void InitializeSpawnedLane(LaneElement lane, TNote note);
+        protected abstract void InitializeSpawnedLane(LaneElement lane, int laneIndex);
+        protected virtual void ModifyLaneFromNote(LaneElement lane, TNote note) {}
+
+        protected abstract void RescaleLanesForBRE();
 
         protected virtual void OnNoteHit(int index, TNote note)
         {
+            if (!Player.Profile.IsBot)
+            {
+                _autoCalibrator.RecordAccuracy(note.Time);
+            }
+
             if (!GameManager.IsSeekingReplay)
             {
                 SetStemMuteState(false);
@@ -713,6 +1012,7 @@ namespace YARG.Gameplay.Player
                 if (LastCombo >= 10)
                 {
                     GlobalAudioHandler.PlaySoundEffect(SfxSample.NoteMiss);
+                    CameraPositioner.Punch();
                 }
 
                 foreach (var haptics in SantrollerHaptics)
@@ -730,6 +1030,11 @@ namespace YARG.Gameplay.Player
             {
                 ComboMeter.SetFullCombo(false);
                 IsFc = false;
+            }
+
+            if (LastCombo >= 10)
+            {
+                CameraPositioner.Punch();
             }
 
             LastCombo = Combo;
@@ -755,13 +1060,36 @@ namespace YARG.Gameplay.Player
             }
         }
 
+        protected virtual void OnCodaStart(CodaSection coda)
+        {
+            CurrentCoda = coda;
+            CurrentCoda.SetLaneIndexes(GetLaneIndexes());
+            SetStemMuteState(false);
+        }
+
+        protected virtual void OnCodaEnd(CodaSection coda)
+        {
+
+        }
+
         protected virtual void OnCountdownChange(double countdownLength, double endTime)
         {
             TrackView.UpdateCountdown(countdownLength, endTime);
         }
 
+        protected virtual void OnStarPowerPhraseMissed(TNote note)
+        {
+            OnStarPowerPhraseMissed();
+        }
+
         protected virtual void OnStarPowerPhraseHit(TNote note)
         {
+            if (SettingsManager.Settings.EnableTrackEffects.Value)
+            {
+                StarPowerEffect.gameObject.SetActive(true);
+                StarPowerEffect.PlayAnimation();
+            }
+
             OnStarPowerPhraseHit();
         }
 
@@ -774,6 +1102,27 @@ namespace YARG.Gameplay.Player
                 _newHighScoreShown = true;
                 TrackView.ShowNewHighScore();
             }
+        }
+
+        public void MetronomeTick()
+        {
+            GlobalAudioHandler.PlayMetronomeSoundEffect(SettingsManager.Settings.MetronomeSound.Value, MetronomePitch.Hi);
+        }
+
+        public void MetronomeTock()
+        {
+            GlobalAudioHandler.PlayMetronomeSoundEffect(SettingsManager.Settings.MetronomeSound.Value, MetronomePitch.Lo);
+        }
+
+        protected virtual Dictionary<int, int> GetLaneIndexes()
+        {
+            var indexDict = new Dictionary<int, int>();
+            for (int i = 0; i < LaneCount; i++)
+            {
+                indexDict[i] = i;
+            }
+
+            return indexDict;
         }
     }
 }

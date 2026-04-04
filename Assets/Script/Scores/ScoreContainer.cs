@@ -34,10 +34,13 @@ namespace YARG.Scores
         private static readonly Dictionary<HashWrapper, GameRecord> BandHighScores = new();
 
         private static Instrument _currentInstrument = Instrument.Band;
-        private static Guid _currentPlayerId;
+        private static Guid       _currentPlayerId;
+        private static bool       _scoresWereFetched;
 
         private static bool HighestDifficultyOnly
             => SettingsManager.Settings.HighScoreHistory.Value == HighScoreHistoryMode.HighestDifficulty;
+
+        private static bool AllowScoresWithBots => SettingsManager.Settings.SaveScoresWithBots.Value;
 
         public static void Init()
         {
@@ -86,13 +89,18 @@ namespace YARG.Scores
 
         public static bool IsBandScoreValid(float songSpeed)
         {
-            if (!PlayerContainer.Players.Any())
+            var activePlayers = PlayerContainer.Players.Where(p => !p.SittingOut).ToList();
+            var humans = activePlayers.Where(p => !p.Profile.IsBot).ToList();
+            var hasBots = activePlayers.Count > humans.Count;
+            var hasHumans = humans.Count > 0;
+            var allHumanScoresValid = hasHumans && humans.All(player => IsSoloScoreValid(songSpeed, player));
+
+            if (!allHumanScoresValid)
             {
                 return false;
             }
 
-            // If any player is disqualified from a valid Solo Score, this should disqualify the Band Score as well.
-            if (PlayerContainer.Players.Any(e => !e.SittingOut && !IsSoloScoreValid(songSpeed, e)))
+            if (!AllowScoresWithBots && hasBots)
             {
                 return false;
             }
@@ -102,7 +110,7 @@ namespace YARG.Scores
 
         public static bool IsSoloScoreValid(float songSpeed, YargPlayer player)
         {
-            if (songSpeed < 1.0f || player.Profile.IsBot)
+            if (songSpeed < 1.0f || player.Profile.IsBot || !player.IsScoreValid)
             {
                 return false;
             }
@@ -143,6 +151,7 @@ namespace YARG.Scores
                     UpdatePlayerHighScores(songChecksum, playerEntries.First());
                 }
 
+                SongContainer.InvalidateStarsCache();
                 YargLogger.LogInfo("Recorded score for song.");
             }
             catch (Exception e)
@@ -183,7 +192,21 @@ namespace YARG.Scores
             return null;
         }
 
-        public static List<PlayerScoreRecord> GetAllPlayerScores(Guid id)
+        public static List<PlayerScoreRecord> GetAllPlayerScoreRecords()
+        {
+            try
+            {
+                return _db.QueryAllPlayerScoreRecords();
+            }
+            catch (Exception e)
+            {
+                YargLogger.LogException(e, "Failed to load all PlayerScoreRecords from database.");
+            }
+
+            return null;
+        }
+
+        public static List<PlayerScoreRecord> GetAllScoresByPlayerId(Guid id)
         {
             try
             {
@@ -281,7 +304,7 @@ namespace YARG.Scores
 
         private static void FetchHighScores(Guid playerId, Instrument instrument)
         {
-            if (_currentPlayerId == playerId && _currentInstrument == instrument && PlayerHighScores.Any())
+            if (_currentPlayerId == playerId && _currentInstrument == instrument && _scoresWereFetched)
             {
                 // Already cached. No need to fetch again from the database.
                 return;
@@ -320,6 +343,7 @@ namespace YARG.Scores
 
                 _currentInstrument = instrument;
                 _currentPlayerId = playerId;
+                _scoresWereFetched = true;
             }
             catch (Exception e)
             {
@@ -331,6 +355,7 @@ namespace YARG.Scores
         {
             _currentPlayerId = Guid.Empty;
             _currentInstrument = Instrument.Band;
+            _scoresWereFetched = false;
         }
 
         public static List<SongEntry> GetMostPlayedSongs(int maxCount)
@@ -359,11 +384,11 @@ namespace YARG.Scores
         }
 
         // this is the same as GetMostPlayedSongs, but is limited to the one profile and returns the entire list
-        public static List<SongEntry> GetPlayedSongsForUserByPlaycount(YargProfile profile, SortOrdering ordering)
+        public static Dictionary<SongEntry,int> GetPlayedSongsForUserByPlaycount(YargProfile profile, SortOrdering ordering)
         {
             try
             {
-                var songList = new List<SongEntry>();
+                var songPlays = new Dictionary<SongEntry, int>();
 
                 var mostPlayed = _db.QueryPlayerMostPlayedSongs(profile, ordering);
                 foreach (var record in mostPlayed)
@@ -371,16 +396,20 @@ namespace YARG.Scores
                     var hash = HashWrapper.Create(record.SongChecksum);
                     if (SongContainer.SongsByHash.TryGetValue(hash, out var list))
                     {
-                        songList.AddRange(list);
+                        var plays = record.Count;
+                        foreach (var song in list)
+                        {
+                            songPlays[song] = plays;
+                        }
                     }
                 }
 
-                return songList;
+                return songPlays;
             }
             catch (Exception e)
             {
                 YargLogger.LogException(e, "Failed to load most played songs from database.");
-                return new List<SongEntry>();
+                return new Dictionary<SongEntry, int>();
             }
         }
 

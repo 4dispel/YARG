@@ -1,7 +1,7 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
-using YARG.Core.Engine.ProKeys;
+using YARG.Core.Engine.Keys;
 using YARG.Core.Game;
 using YARG.Gameplay.Player;
 using YARG.Helpers.Extensions;
@@ -11,9 +11,11 @@ namespace YARG.Gameplay.Visuals
     public class ProKeysTrackOverlay : MonoBehaviour
     {
         [SerializeField]
-        private GameObject _keyOverlayPrefabBig;
+        private GameObject _keyOverlayPrefab;
         [SerializeField]
-        private GameObject _keyOverlayPrefabSmall;
+        private GameObject _keyHighlightPrefabBig;
+        [SerializeField]
+        private GameObject _keyHighlightPrefabSmall;
 
         [Space]
         [SerializeField]
@@ -79,8 +81,8 @@ namespace YARG.Gameplay.Visuals
         private void SpawnHighlight(bool isBlackKey, int index, TrackPlayer player, Color color)
         {
             var prefab = isBlackKey
-                ? _keyOverlayPrefabSmall
-                : _keyOverlayPrefabBig;
+                ? _keyHighlightPrefabSmall
+                : _keyHighlightPrefabBig;
             var offset = isBlackKey
                 ? _blackKeyOffset
                 : _whiteKeyOffset;
@@ -97,7 +99,7 @@ namespace YARG.Gameplay.Visuals
             var material = meshRenderer.material;
             material.color = color.WithAlpha(0.3f);
             material.SetTexture(BaseMap, _heldGradientTexture);
-            material.SetFloat(Index, player.PlayerIndex);
+            material.SetFloat(Index, player.HighwayIndex);
             material.SetKeyword(new LocalKeyword(material.shader, "_ISHIGHLIGHT"), true);
 
             highlight.SetActive(false);
@@ -108,12 +110,12 @@ namespace YARG.Gameplay.Visuals
         {
             // Spawn overlay
 
-            var overlay = Instantiate(_keyOverlayPrefabBig, transform);
+            var overlay = Instantiate(_keyOverlayPrefab, transform);
             overlay.transform.localPosition = new Vector3(index * KeySpacing + _whiteKeyOffset, 0f, 0f);
 
             var material = overlay.GetComponentInChildren<MeshRenderer>().material;
             material.color = color.WithAlpha(0.05f);
-            material.SetFloat(Index, player.PlayerIndex);
+            material.SetFloat(Index, player.HighwayIndex);
 
             // Set up the correct texture
 

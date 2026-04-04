@@ -1,12 +1,15 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Cysharp.Text;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.Controls;
 using UnityEngine.InputSystem.Layouts;
 using UnityEngine.InputSystem.LowLevel;
 using YARG.Core.Input;
 using YARG.Core.Logging;
+using YARG.Menu.Navigation;
 using YARG.Menu.Persistent;
 using YARG.Player;
 using YARG.Settings;
@@ -49,12 +52,23 @@ namespace YARG.Input
         private static HashSet<InputDevice> _seenDevices = new();
         private static HashSet<InputDevice> _disabledDevices = new();
 
+        private static HashSet<InputDevice> _registeredDevices = new();
+
+        private static DefaultKeyboardMenuBindings _defaultKeyboardMenuBindings;
+
         // We do this song and dance of tracking focus changes manually rather than setting
         // InputSettings.backgroundBehavior to IgnoreFocus, so that input is still (largely) disabled when unfocused
         // but devices are not removed only to be re-added when coming back into focus
         private static bool _gameFocused;
         private static bool _focusChanged;
         private static HashSet<InputDevice> _backgroundDisabledDevices = new();
+
+        private static bool HasProfileWithKeyboard =>
+            PlayerContainer.Players
+                .Where(p => p.InputsEnabled)
+                .SelectMany(p => p.Bindings.InputDevices)
+                .OfType<Keyboard>()
+                .Any();
 
         public static void Initialize()
         {
@@ -68,6 +82,8 @@ namespace YARG.Input
             _gameFocused = Application.isFocused;
             Application.focusChanged += OnFocusChange;
             InputSystem.onDeviceChange += OnDeviceChange;
+
+            _defaultKeyboardMenuBindings = new DefaultKeyboardMenuBindings();
 
             // Notify of all current devices
             ToastManager.ToastInformation("Devices found: " + (Microphone.devices.Length + InputSystem.devices.Count));
@@ -95,6 +111,9 @@ namespace YARG.Input
 
         public static void Destroy()
         {
+            _defaultKeyboardMenuBindings?.Dispose();
+            _defaultKeyboardMenuBindings = null;
+
             InputSystem.onEvent -= OnEvent;
 
             InputSystem.onBeforeUpdate -= OnBeforeUpdate;
@@ -106,11 +125,63 @@ namespace YARG.Input
         public static void RegisterPlayer(YargPlayer player)
         {
             player.MenuInput += OnMenuInput;
+            player.Bindings.DeviceAdded += OnPlayerBindingDeviceAdded;
+            player.Bindings.DeviceRemoved += OnPlayerBindingDeviceRemoved;
+
+            foreach (var device in player.Bindings.InputDevices)
+            {
+                if (!_registeredDevices.Add(device))
+                {
+                    YargLogger.LogFormatError("Player already registered with device: {0}", device);
+                }
+
+                if (device is Keyboard)
+                {
+                    _defaultKeyboardMenuBindings.Disable();
+                }
+            }
         }
 
         public static void UnregisterPlayer(YargPlayer player)
         {
             player.MenuInput -= OnMenuInput;
+            player.Bindings.DeviceAdded -= OnPlayerBindingDeviceAdded;
+            player.Bindings.DeviceRemoved -= OnPlayerBindingDeviceRemoved;
+
+            foreach (var device in player.Bindings.InputDevices)
+            {
+                if (!_registeredDevices.Remove(device))
+                {
+                    YargLogger.LogFormatError("Player not registered with device: {0}", device);
+                }
+            }
+
+            if (!HasProfileWithKeyboard)
+            {
+                _defaultKeyboardMenuBindings?.Enable();
+            }
+        }
+
+        private static void OnPlayerBindingDeviceAdded(InputDevice device)
+        {
+            if (HasProfileWithKeyboard)
+            {
+                _defaultKeyboardMenuBindings.Disable();
+            }
+        }
+
+        private static void OnPlayerBindingDeviceRemoved(InputDevice device)
+        {
+            if (!HasProfileWithKeyboard)
+            {
+                _defaultKeyboardMenuBindings.Enable();
+            }
+        }
+
+        public static void OnMenuAction(MenuAction action, bool pressed)
+        {
+            var input = new GameInput(CurrentInputTime, (int)action, pressed);
+            MenuInput?.Invoke(null, ref input);
         }
 
         private static void OnMenuInput(YargPlayer player, ref GameInput input)
@@ -181,6 +252,38 @@ namespace YARG.Input
                 YargLogger.LogFormatError(
                     "An input event is in the future!\nCurrent time: {0}, event time: {1}, device: {2}",
                     currentTime, eventPtr.time, device);
+            }
+
+            // TODO: It would be nice to suppress the following for keyboard/mouse when there is no
+            //  profile bound to the keyboard or mouse. Just seems like a waste of cycles to check
+            //  on every input event.
+
+            // For now, ignore keyboard, mouse, and pen entirely
+            if (device is Keyboard or Mouse or Pen)
+            {
+                return;
+            }
+
+            if (!_registeredDevices.Contains(device))
+            {
+                // Don't ask me why, but we get events with no controls changed, so we have to check that there
+                // was a change in addition to checking if it was a noisy control that did change
+                bool controlChanged = false;
+
+                foreach (var control in eventPtr.EnumerateChangedControls())
+                {
+                    if (control.noisy || control is not ButtonControl)
+                    {
+                        continue;
+                    }
+                    controlChanged = true;
+                    break;
+                }
+
+                if (controlChanged)
+                {
+                    eventPtr.handled = PlayerContainer.TryConnectProfile(device);
+                }
             }
 
 // Leaving these for posterity

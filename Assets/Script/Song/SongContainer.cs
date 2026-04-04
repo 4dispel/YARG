@@ -1,20 +1,21 @@
-﻿using System.Collections.Generic;
-using YARG.Core.Song.Cache;
-using YARG.Core.Song;
+﻿using Cysharp.Threading.Tasks;
 using System;
+using System.Collections.Generic;
 using System.Linq;
-using YARG.Helpers.Extensions;
-using YARG.Settings;
-using YARG.Helpers;
-using Cysharp.Threading.Tasks;
-using YARG.Menu.MusicLibrary;
-using YARG.Core.Logging;
+using UniRx;
 using YARG.Core;
-using YARG.Player;
-using YARG.Localization;
-using YARG.Scores;
-using YARG.Core.Utility;
 using YARG.Core.Game;
+using YARG.Core.Logging;
+using YARG.Core.Song;
+using YARG.Core.Song.Cache;
+using YARG.Core.Utility;
+using YARG.Helpers;
+using YARG.Helpers.Extensions;
+using YARG.Localization;
+using YARG.Menu.MusicLibrary;
+using YARG.Player;
+using YARG.Scores;
+using YARG.Settings;
 
 namespace YARG.Song
 {
@@ -26,15 +27,17 @@ namespace YARG.Song
         Album,
         Artist_Album,
         Genre,
+        Subgenre,
         Year,
         Charter,
-        Playlist,
+        Folder,
         Source,
         SongLength,
         DateAdded,
-        Playable,
         Playcount,
         Stars,
+        Playable,
+        Random,
 
         Instrument,
         FiveFretGuitar,
@@ -65,12 +68,14 @@ namespace YARG.Song
         public string      Category      { get; }
         public string      CategoryGroup { get; }
         public SongEntry[] Songs         { get; }
+        public bool Collapsed { get; }
 
-        public SongCategory(string category, SongEntry[] songs, string categoryGroupName)
+        public SongCategory(string category, SongEntry[] songs, string categoryGroupName, bool collapsed = false)
         {
             Category = category;
             Songs = songs;
             CategoryGroup = categoryGroupName;
+            Collapsed = collapsed;
         }
 
         public void Deconstruct(out string category, out SongEntry[] songs)
@@ -83,12 +88,14 @@ namespace YARG.Song
     public static class SongContainer
     {
         private static SongCache _songCache = new();
+        private static SortedSongs _sortedSongs = new();
         private static SongEntry[] _songs = Array.Empty<SongEntry>();
 
         private static SongCategory[] _sortTitles = Array.Empty<SongCategory>();
         private static SongCategory[] _sortArtists = Array.Empty<SongCategory>();
         private static SongCategory[] _sortAlbums = Array.Empty<SongCategory>();
         private static SongCategory[] _sortGenres = Array.Empty<SongCategory>();
+        private static SongCategory[] _sortSubgenres = Array.Empty<SongCategory>();
         private static SongCategory[] _sortYears = Array.Empty<SongCategory>();
         private static SongCategory[] _sortCharters = Array.Empty<SongCategory>();
         private static SongCategory[] _sortPlaylists = Array.Empty<SongCategory>();
@@ -101,19 +108,24 @@ namespace YARG.Song
         private static SongCategory[] _playables = null;
         private static SongCategory[] _sortStars = Array.Empty<SongCategory>();
         private static readonly Dictionary<SongEntry, StarAmount> _runtimeStars = new();
+        private static Guid _starsCacheProfileId = Guid.Empty;
+        private static Instrument _starsCacheInstrument = Instrument.Band;
+        private static Difficulty _starsCacheDifficulty = Difficulty.Easy;
+        private static bool _starsCacheValid;
 
-        public static IReadOnlyDictionary<string, List<SongEntry>> Titles => _songCache.Titles;
-        public static IReadOnlyDictionary<string, List<SongEntry>> Years => _songCache.Years;
-        public static IReadOnlyDictionary<string, List<SongEntry>> SongLengths => _songCache.SongLengths;
-        public static IReadOnlyDictionary<DateTime, List<SongEntry>> AddedDates => _songCache.DatesAdded;
-        public static IReadOnlyDictionary<SortString, List<SongEntry>> Artists => _songCache.Artists;
-        public static IReadOnlyDictionary<SortString, List<SongEntry>> Albums => _songCache.Albums;
-        public static IReadOnlyDictionary<SortString, List<SongEntry>> Genres => _songCache.Genres;
-        public static IReadOnlyDictionary<SortString, List<SongEntry>> Charters => _songCache.Charters;
-        public static IReadOnlyDictionary<SortString, List<SongEntry>> Playlists => _songCache.Playlists;
-        public static IReadOnlyDictionary<SortString, List<SongEntry>> Sources => _songCache.Sources;
-        public static IReadOnlyDictionary<SortString, SortedDictionary<SortString, List<SongEntry>>> ArtistAlbums => _songCache.ArtistAlbums;
-        public static IReadOnlyDictionary<Instrument, SortedDictionary<int, List<SongEntry>>> Instruments => _songCache.Instruments;
+        public static IReadOnlyDictionary<string, List<SongEntry>> Titles => _sortedSongs.Titles;
+        public static IReadOnlyDictionary<string, List<SongEntry>> Years => _sortedSongs.Years;
+        public static IReadOnlyDictionary<string, List<SongEntry>> SongLengths => _sortedSongs.SongLengths;
+        public static IReadOnlyDictionary<DateTime, List<SongEntry>> AddedDates => _sortedSongs.DatesAdded;
+        public static IReadOnlyDictionary<SortString, List<SongEntry>> Artists => _sortedSongs.Artists;
+        public static IReadOnlyDictionary<SortString, List<SongEntry>> Albums => _sortedSongs.Albums;
+        public static IReadOnlyDictionary<SortString, List<SongEntry>> Genres => _sortedSongs.Genres;
+        public static IReadOnlyDictionary<SortString, List<SongEntry>> Subgenres => _sortedSongs.Subgenres;
+        public static IReadOnlyDictionary<SortString, List<SongEntry>> Charters => _sortedSongs.Charters;
+        public static IReadOnlyDictionary<SortString, List<SongEntry>> Playlists => _sortedSongs.Playlists;
+        public static IReadOnlyDictionary<SortString, List<SongEntry>> Sources => _sortedSongs.Sources;
+        public static IReadOnlyDictionary<SortString, SortedDictionary<SortString, List<SongEntry>>> ArtistAlbums => _sortedSongs.ArtistAlbums;
+        public static IReadOnlyDictionary<Instrument, SortedDictionary<int, List<SongEntry>>> Instruments => _sortedSongs.Instruments;
 
         public static int Count => _songs.Length;
         public static IReadOnlyDictionary<HashWrapper, List<SongEntry>> SongsByHash => _songCache.Entries;
@@ -133,7 +145,7 @@ namespace YARG.Song
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             var task = UniTask.RunOnThreadPool(() =>
             {
-                _songCache = CacheHandler.RunScan(quick,
+                _songCache =  CacheHandler.RunScan(quick,
                     PathHelper.SongCachePath,
                     PathHelper.BadSongsPath,
                     SettingsManager.Settings.UseFullDirectoryForPlaylists.Value,
@@ -148,6 +160,20 @@ namespace YARG.Song
                 }
                 await UniTask.NextFrame();
             }
+
+            if (SettingsManager.Settings.Genrelizer.Value is GenrelizerMode.Genrelize && !GlobalVariables.OfflineMode)
+            {
+                Genrelizer.GenrelizeAll(_songCache, false);
+            }
+            else if (SettingsManager.Settings.Genrelizer.Value is GenrelizerMode.Overgenrelize && !GlobalVariables.OfflineMode)
+            {
+                Genrelizer.GenrelizeAll(_songCache, true);
+            }
+            else
+            {
+                Genrelizer.DegenrelizeAll(_songCache);
+            }
+            SongSorting.SortEntries(_songCache, _sortedSongs);
             FillContainers();
             stopwatch.Stop();
 
@@ -164,9 +190,10 @@ namespace YARG.Song
                 SortAttribute.Artist => _sortArtists,
                 SortAttribute.Album => _sortAlbums,
                 SortAttribute.Genre => _sortGenres,
+                SortAttribute.Subgenre => _sortSubgenres,
                 SortAttribute.Year => _sortYears,
                 SortAttribute.Charter => _sortCharters,
-                SortAttribute.Playlist => _sortPlaylists,
+                SortAttribute.Folder => _sortPlaylists,
                 SortAttribute.Source => _sortSources,
                 SortAttribute.Artist_Album => _sortArtistAlbums,
                 SortAttribute.SongLength => _sortSongLengths,
@@ -174,6 +201,7 @@ namespace YARG.Song
                 SortAttribute.Playcount => GetPlaycounts(),
                 SortAttribute.Playable => GetPlayableSongs(),
                 SortAttribute.Stars => GetStars(),
+                SortAttribute.Random => GetRandomSort(),
 
                 SortAttribute.FiveFretGuitar => _sortInstruments[Instrument.FiveFretGuitar],
                 SortAttribute.FiveFretBass   => _sortInstruments[Instrument.FiveFretBass],
@@ -246,11 +274,14 @@ namespace YARG.Song
                         var set = new HashSet<SongEntry>();
                         foreach (var ins in player.Profile.GameMode.PossibleInstruments())
                         {
-                            foreach (var list in _songCache.Instruments[ins].Values)
+                            if (HasInstrument(ins))
                             {
-                                foreach (var entry in list)
+                                foreach (var list in _sortedSongs.Instruments[ins].Values)
                                 {
-                                    set.Add(entry);
+                                    foreach (var entry in list)
+                                    {
+                                        set.Add(entry);
+                                    }
                                 }
                             }
                         }
@@ -296,10 +327,18 @@ namespace YARG.Song
             return _songs.Pick();
         }
 
+        public static void InvalidateStarsCache()
+        {
+            _starsCacheValid = false;
+            _sortStars = Array.Empty<SongCategory>();
+            _runtimeStars.Clear();
+        }
+
         // Play count sorting is intentionally not cached, as it must be regenerated after
         // every play, when profiles change, and probably a bunch of other stuff
         private static SongCategory[] GetPlaycounts()
         {
+            int[] countThresholds = { 100, 50, 40, 30, 20, 10, 5, 1 };
             // This should never happen since play count shouldn't be selectable without
             // a non-bot profile and MusicLibraryMenu already checks for this, but let's double check
             if (PlayerContainer.OnlyHasBotsActive())
@@ -307,11 +346,50 @@ namespace YARG.Song
                 // Titles seems like a reasonable fallback
                 return _sortTitles;
             }
-            var player = PlayerContainer.Players.First(e => !e.Profile.IsBot);
+
+            var player = PlayerContainer.Players.FirstOrDefault(e => !e.Profile.IsBot);
+
+            if (player == null)
+            {
+                // This case should have been caught above, but just in case
+                return _sortTitles;
+            }
+
+            // Set up an array of lists of songentries, one for each play count threshold (plus one for the unplayed header)
+            var categorySongs = new List<SongEntry>[countThresholds.Length];
+            for (int i = 0; i < countThresholds.Length; i++)
+            {
+                categorySongs[i] = new List<SongEntry>();
+            }
 
             var counts = ScoreContainer.GetPlayedSongsForUserByPlaycount(player.Profile, SortOrdering.Descending);
+
+            // Counts will be in descending order, so we can iterate through the list until we drop below the threshold
+            // and then move to the next threshold
+            int thresholdIndex = 0;
+            foreach ((SongEntry song, int count) in counts)
+            {
+                if (count < countThresholds[thresholdIndex])
+                {
+                    // Increase thresholdIndex until threshold is less than or equal to count and add the song to that category
+                    while (count < countThresholds[thresholdIndex] && thresholdIndex < countThresholds.Length - 1)
+                    {
+                        thresholdIndex++;
+                    }
+                }
+
+                // Double check that we haven't run out of thresholds
+                if (thresholdIndex >= countThresholds.Length)
+                {
+                    break;
+                }
+
+                categorySongs[thresholdIndex].Add(song);
+            }
+
             // Get all the unplayed songs and stuff them on the end of the list
             var zeroPlaySongs = new List<SongEntry>();
+            var zeroPlayCategories = new List<SongCategory>();
             var previousSort = SettingsManager.Settings.PreviousLibrarySort;
 
             if (previousSort == SortAttribute.Unspecified)
@@ -325,16 +403,46 @@ namespace YARG.Song
             {
                 foreach (var song in category.Songs)
                 {
-                    if (!counts.Contains(song))
+                    if (!counts.ContainsKey(song))
                     {
                         zeroPlaySongs.Add(song);
                     }
                 }
+
+                zeroPlayCategories.Add(new SongCategory(category.Category, zeroPlaySongs.ToArray(), category.CategoryGroup));
+                zeroPlaySongs.Clear();
             }
-            var countCategories = new SongCategory[2];
-            countCategories[0] = new SongCategory("PLAYED SONGS", counts.ToArray(), "Played Songs");
-            countCategories[1] = new SongCategory("UNPLAYED SONGS", zeroPlaySongs.ToArray(), "Unplayed Songs");
-            return countCategories;
+
+            int filledCategories = 0;
+            for (int i = 0; i < countThresholds.Length; i++)
+            {
+                if (categorySongs[i].Count > 0)
+                {
+                    filledCategories++;
+                }
+            }
+
+            var categories = new SongCategory[filledCategories + zeroPlayCategories.Count];
+
+            // Build the played categories, skipping any unfilled categories
+
+            int categoryIndex = 0;
+            for (int i = 0; i < countThresholds.Length; i++)
+            {
+                if (categorySongs[i].Count > 0)
+                {
+                    categories[categoryIndex] = new SongCategory($"Played {countThresholds[i]}+ times", categorySongs[i].ToArray(), $"Played {countThresholds[i]}+ times");
+                    categoryIndex++;
+                }
+            }
+
+            // Now add the unplayed categories
+            for (int i = 0; i < zeroPlayCategories.Count; i++)
+            {
+                categories[categoryIndex + i] = zeroPlayCategories[i];
+            }
+
+            return categories;
         }
 
         private static SongCategory[] GetStars()
@@ -360,8 +468,17 @@ namespace YARG.Song
                 return _sortTitles;
             }
 
+            var profile = player.Profile;
+            if (_starsCacheValid &&
+                _starsCacheProfileId == profile.Id &&
+                _starsCacheInstrument == profile.CurrentInstrument &&
+                _starsCacheDifficulty == profile.CurrentDifficulty)
+            {
+                return _sortStars;
+            }
+
             _runtimeStars.Clear();
-            Dictionary<HashWrapper, StarAmount> bestStars = ScoreContainer.GetBestStarsForSong(player.Profile);
+            Dictionary<HashWrapper, StarAmount> bestStars = ScoreContainer.GetBestStarsForSong(profile);
             foreach (var song in _songs)
             {
                 if (!bestStars.TryGetValue(song.Hash, out StarAmount stars))
@@ -407,7 +524,19 @@ namespace YARG.Song
                 starCategories[i++] = new SongCategory(label, list.ToArray(), label);
             }
 
-            return starCategories;
+            _sortStars = starCategories;
+            _starsCacheProfileId = profile.Id;
+            _starsCacheInstrument = profile.CurrentInstrument;
+            _starsCacheDifficulty = profile.CurrentDifficulty;
+            _starsCacheValid = true;
+            return _sortStars;
+        }
+
+        private static SongCategory[] GetRandomSort()
+        {
+            var shuffled = new List<SongEntry>(_songs);
+            shuffled.Shuffle();
+            return new[] { new SongCategory(string.Empty, shuffled.ToArray(), null) };
         }
 
         private static void UpdateSongUi(LoadingContext context)
@@ -448,32 +577,34 @@ namespace YARG.Song
 
         private static void FillContainers()
         {
+            InvalidateStarsCache();
             _songs = SetAllSongs(_songCache.Entries);
 
-            _sortArtists      = Convert(_songCache.Artists, SongAttribute.Artist);
-            _sortAlbums       = Convert(_songCache.Albums, SongAttribute.Album);
-            _sortGenres       = Convert(_songCache.Genres, SongAttribute.Genre);
-            _sortCharters     = Convert(_songCache.Charters, SongAttribute.Charter);
-            _sortPlaylists    = Convert(_songCache.Playlists, SongAttribute.Playlist);
-            _sortSources      = Convert(_songCache.Sources, SongAttribute.Source);
-            _sortArtistAlbums = Combine(_songCache.ArtistAlbums);
+            _sortArtists      = Convert(_sortedSongs.Artists, SongAttribute.Artist);
+            _sortAlbums       = Convert(_sortedSongs.Albums, SongAttribute.Album);
+            _sortGenres       = Convert(_sortedSongs.Genres, SongAttribute.Genre);
+            _sortSubgenres    = Convert(_sortedSongs.Subgenres, SongAttribute.Subgenre);
+            _sortCharters     = Convert(_sortedSongs.Charters, SongAttribute.Charter);
+            _sortPlaylists    = Convert(_sortedSongs.Playlists, SongAttribute.Playlist);
+            _sortSources      = Convert(_sortedSongs.Sources, SongAttribute.Source);
+            _sortArtistAlbums = Combine(_sortedSongs.ArtistAlbums);
 
-            _sortTitles       = Cast(_songCache.Titles);
-            _sortYears        = Cast(_songCache.Years);
-            _sortSongLengths  = Cast(_songCache.SongLengths);
+            _sortTitles       = Cast(_sortedSongs.Titles);
+            _sortYears        = Cast(_sortedSongs.Years);
+            _sortSongLengths  = Cast(_sortedSongs.SongLengths);
             _playables = null;
 
-            _sortDatesAdded = new SongCategory[_songCache.DatesAdded.Count];
+            _sortDatesAdded = new SongCategory[_sortedSongs.DatesAdded.Count];
             {
                 int index = 0;
-                foreach (var node in _songCache.DatesAdded)
+                foreach (var node in _sortedSongs.DatesAdded)
                 {
                     _sortDatesAdded[index++] = new(node.Key.ToLongDateString(), node.Value.ToArray(), node.Key.ToString("y"));
                 }
             }
 
             _sortInstruments.Clear();
-            foreach (var instrument in _songCache.Instruments)
+            foreach (var instrument in _sortedSongs.Instruments)
             {
                 try
                 {
@@ -537,7 +668,7 @@ namespace YARG.Song
                             var genre = node.Value[0].Genre;
                             if (genre.Length > 0 && char.IsLower(genre[0]))
                             {
-                                key = char.ToUpperInvariant(genre[0]).ToString();
+                                key = genre[0].ToString();
                                 if (genre.Length > 1)
                                 {
                                     key += genre[1..];
@@ -546,6 +677,23 @@ namespace YARG.Song
                             else
                             {
                                 key = genre;
+                            }
+                            break;
+                        }
+                        case SongAttribute.Subgenre:
+                        {
+                            var subgenre = string.IsNullOrEmpty(node.Value[0].Subgenre) ? node.Value[0].Genre : node.Value[0].Subgenre;
+                            if (subgenre.Length > 0 && char.IsLower(subgenre[0]))
+                            {
+                                key = subgenre[0].ToString();
+                                if (subgenre.Length > 1)
+                                {
+                                    key += subgenre[1..];
+                                }
+                            }
+                            else
+                            {
+                                key = subgenre;
                             }
                             break;
                         }

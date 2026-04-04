@@ -3,6 +3,7 @@ using UnityEngine;
 using YARG.Core.Chart;
 using YARG.Helpers.Extensions;
 using YARG.Settings;
+using Color = System.Drawing.Color;
 
 namespace YARG.Gameplay.Visuals
 {
@@ -12,29 +13,15 @@ namespace YARG.Gameplay.Visuals
         {
             base.InitializeElement();
 
-            var noteGroups = NoteRef.IsStarPower ? StarPowerNoteGroups : NoteGroups;
+            var noteGroups = IsStarPowerVisible ? StarPowerNoteGroups : NoteGroups;
 
             if (NoteRef.Pad != 0)
             {
                 // Deal with non-kick notes
-
+                var position = Player.GetHighwayOrderingInfo(NoteRef.Pad).Position;
+                
                 // Set the position
-                int position;
-                if (Player.Player.Profile.SwapSnareAndHiHat)
-                {
-                    position = NoteRef.Pad switch
-                    {
-                        1 => 2,
-                        2 => 1,
-                        _ => NoteRef.Pad
-                    };
-                }
-                else
-                {
-                    position = NoteRef.Pad;
-                }
-
-                transform.localPosition = new Vector3(GetElementX(position, 5), 0f, 0f) * LeftyFlipMultiplier;
+                transform.localPosition = new Vector3(GetElementX(position, Player.LaneCount), 0f, 0f);
 
                 // Get which note model to use
                 if (Player.Player.Profile.UseCymbalModels)
@@ -63,40 +50,51 @@ namespace YARG.Gameplay.Visuals
             UpdateColor();
         }
 
+        protected override void UpdateElement()
+        {
+            // Potentially update flash in case of activation note
+            UpdateColor();
+        }
+
         protected override void UpdateColor()
         {
             var colors = Player.Player.ColorProfile.FiveLaneDrums;
 
             // Get pad index
-            int pad = NoteRef.Pad;
-            if (LeftyFlip)
-            {
-                pad = (FiveLaneDrumPad) pad switch
-                {
-                    FiveLaneDrumPad.Kick   => (int) FiveLaneDrumPad.Kick,
-                    FiveLaneDrumPad.Red    => (int) FiveLaneDrumPad.Green,
-                    FiveLaneDrumPad.Yellow => (int) FiveLaneDrumPad.Orange,
-                    FiveLaneDrumPad.Blue   => (int) FiveLaneDrumPad.Blue,
-                    FiveLaneDrumPad.Orange => (int) FiveLaneDrumPad.Yellow,
-                    FiveLaneDrumPad.Green  => (int) FiveLaneDrumPad.Red,
-                    _                      => throw new Exception("Unreachable.")
-                };
-            }
-
+            var colorIndex = Player.GetHighwayOrderingInfo(NoteRef.Pad).ColorIndex;
+            
             // Get colors
-            var colorNoStarPower = colors.GetNoteColor(pad);
+            var colorNoStarPower = colors.GetNoteColor(colorIndex);
             var color = colorNoStarPower;
-            if (NoteRef.IsStarPowerActivator && Player.Engine.CanStarPowerActivate && !Player.Engine.BaseStats.IsStarPowerActive)
+
+            if (NoteRef.WasMissed)
             {
-                color = colors.ActivationNote;
+                color = colors.Miss;
             }
-            else if (NoteRef.IsStarPower)
+            else if (NoteRef.IsStarPowerActivator && Player.Engine.CanStarPowerActivate && !Player.Engine.BaseStats.IsStarPowerActive)
             {
-                color = colors.GetNoteStarPowerColor(pad);
+                float pulse = (float) GameManager.BeatEventHandler.Visual.StrongBeat.CurrentPercentage;
+                var fullColor = colors.GetActivationNoteColor(colorIndex);
+                color = Color.FromArgb(
+                    fullColor.A,
+                    GetColorFromPulse(fullColor.R, pulse),
+                    GetColorFromPulse(fullColor.G, pulse),
+                    GetColorFromPulse(fullColor.B, pulse)
+                );
+            }
+            else if (IsStarPowerVisible)
+            {
+                color = colors.GetNoteStarPowerColor(colorIndex);
             }
 
-            // Set the note color
-            NoteGroup.SetColorWithEmission(color.ToUnityColor(), colorNoStarPower.ToUnityColor());
+            // Set the note color if not hidden
+            if (!NoteRef.WasHit)
+            {
+                NoteGroup.SetColorWithEmission(color.ToUnityColor(), colorNoStarPower.ToUnityColor());
+
+                // Set the metal color
+                NoteGroup.SetMetalColor(colors.GetMetalColor(IsStarPowerVisible).ToUnityColor());
+            }
         }
     }
 }
